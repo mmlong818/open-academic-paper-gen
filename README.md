@@ -23,7 +23,7 @@ The output is a draft with a verifiable reference list. It is a starting point f
 - **Evidence table.** One row per paper (task, method, data, metric, finding, limitation) extracted only from that paper's own text, exportable as Markdown or CSV.
 - **Novelty diagnosis.** Grades the research angle on problem, method, data and perspective, names the closest existing papers in the pool, and states the objection a reviewer would most likely raise.
 - **Section-by-section writing with `[cite:KEY]` markers.** Every citation is a key into the literature pool, so it can be checked mechanically.
-- **Three-layer citation verification.** The key must resolve; the DOI and metadata must match a real record; and the cited paper must support the claim, with the PDF page of the best-matching passage when full text is available.
+- **Three checks on every citation.** The key must resolve; the DOI and metadata must match a real record; and the cited paper must support the claim, with the PDF page of the best-matching passage when full text is available.
 - **Constrained revision.** Flagged sentences are rewritten under strict rules, then verified again.
 - **Simulated three-reviewer review.** Three reviewers with different focuses read the final draft independently; comments must quote the draft verbatim.
 - **Writing-style check.** Flags machine-flavoured prose as suggestions; nothing is rewritten.
@@ -34,16 +34,16 @@ The output is a draft with a verifiable reference list. It is a starting point f
 ## How it works
 
 ```
-┌─────────────┐   ┌───────────┐   ┌─────────────┐   ┌─────────┐
-│  Next.js    │──▶│  FastAPI  │──▶│  LangGraph  │──▶│ Postgres│
-│  Frontend   │   │  + WS     │   │  Pipeline   │   │ + Redis │
-└─────────────┘   └───────────┘   └─────────────┘   └─────────┘
-                                         │
-                                         ▼
-                          ┌──────────────────────────────┐
-                          │ OpenAlex · CrossRef · S2 · PDF│
-                          │ OpenAI / Zhipu GLM            │
-                          └──────────────────────────────┘
+┌──────────┐   ┌──────────┐   ┌───────────┐   ┌──────────────────┐
+│ Next.js  │──▶│ FastAPI  │──▶│ LangGraph │──▶│ PostgreSQL       │
+│ frontend │   │ + WS     │   │ pipeline  │   │ Redis (optional) │
+└──────────┘   └──────────┘   └─────┬─────┘   └──────────────────┘
+                                    │
+                                    ▼
+             ┌────────────────────────────────────────────────┐
+             │ OpenAlex · Crossref · Semantic Scholar · arXiv │
+             │ OpenAI / Zhipu GLM                             │
+             └────────────────────────────────────────────────┘
 ```
 
 The pipeline is a nine-stage LangGraph state machine. Progress is pushed to the frontend over WebSocket; Redis is optional and only used for progress pub-sub.
@@ -62,7 +62,7 @@ The pipeline is a nine-stage LangGraph state machine. Progress is pushed to the 
 
 ### Literature handling
 
-- **Full text.** PDFs are tried in order: the open-access PDF reported by Semantic Scholar, the PDF URL returned by the searcher (OpenAlex), then the arXiv PDF derived from an arXiv id or a `10.48550/arXiv` DOI. Text starts at the Abstract heading, skipping title pages and licence notices. Full text is used for verification and is never returned in API responses.
+- **Full text.** PDFs are tried in order: the open-access PDF reported by Semantic Scholar, the PDF URL returned by the searcher (OpenAlex), then the arXiv PDF derived from an arXiv id or a `10.48550/arXiv` DOI. Text starts at the Abstract heading, skipping title pages and license notices. Full text is used for verification and is never returned in API responses.
 - **Abstract lookup.** A record whose abstract is too short to screen on is looked up on OpenAlex by DOI; a longer abstract replaces the one held and the record is marked `abstract_via: openalex`.
 - **Screening.** Each paper is judged against the topic from its excerpt or abstract, or from its title alone when there is no text, leaning to include. Each screening row records its basis.
 - **Citation chaining.** The highest-scoring papers become seeds; their references and citations are pulled from Semantic Scholar, ranked by how many seeds link to them, and screened like searched papers.
@@ -74,21 +74,21 @@ The pipeline is a nine-stage LangGraph state machine. Progress is pushed to the 
 
 Verification is aimed at hallucination detection and claim checking, not at grading metadata completeness.
 
-**Marker resolution.** Every `[cite:KEY]` in the body must resolve to a paper in the literature pool. An unresolved key is flagged as hallucinated and rendered as `[?KEY]` in the output so it is easy to search for and fix. One marker may hold several keys (`[cite:A, cite:B]`); each is checked on its own.
+**Check 1: marker resolution.** Every `[cite:KEY]` in the body must resolve to a paper in the literature pool. An unresolved key is flagged as hallucinated and rendered as `[?KEY]` in the output so it is easy to search for and fix. One marker may hold several keys (`[cite:A, cite:B]`); each is checked on its own.
 
-**Layer 1: existence and metadata.** Papers with a DOI are checked against Crossref.
+**Check 2: existence and metadata** (reported as `layer1`). Papers with a DOI are checked against Crossref.
 
-- A 404 is retried on doi.org, which also covers DataCite (arXiv) and other registrars. The paper is removed only if doi.org does not know the DOI either.
+- On a 404 the DOI is looked up on doi.org, which also covers DataCite (arXiv) and other registrars. The paper is removed only if doi.org does not know the DOI either.
 - A title mismatch is a warning. A matching title is then checked for the same paper: authors in common, first author, year (one year apart is allowed for online-first), and start page. A DOI that is not shaped like a DOI, a future year, and a retraction or withdrawal notice on the record are warnings too.
 - A paper with neither a DOI nor an arXiv id is looked up by title in a second database; if it is found nowhere, it is a warning.
 - Network errors and missing DOIs pass: being unable to verify is not the same as being invalid.
 - The same paper cited under two keys, or a preprint cited beside its published version, is warned on the second key or the preprint.
 
-**Layer 3: claim support.** For each cited paper, a fast model checks whether the source backs what the sentence attributes to it.
+**Check 3: claim support** (reported as `layer3`). For each cited paper, a fast model checks whether the source backs what the sentence attributes to it.
 
 - With full text, the evidence is the paper's opening plus the passages that best match the claims; otherwise it is the excerpt or abstract.
 - Only the part of the sentence tied to that marker is judged. The writer's own evaluation, limitations and contrasts are not claims of the source. Table rows are judged cell by cell, minus columns of the writer's commentary.
-- A detail missing from the text shown is "unclear", not "unsupported". An unsupported claim is a warning that quotes the sentence; this layer never removes a citation.
+- A detail missing from the text shown is "unclear", not "unsupported". An unsupported claim is a warning that quotes the sentence; this check never removes a citation.
 - When page data is available, a warning names the PDF page of the best-matching passage, for example `(PDF p. 7)`. These are PDF pages, not printed ones.
 - A cited paper whose abstract and full text are too short to check is marked `unverified` instead of passed, and the verification panel counts it separately. The writer sees such references marked "Title only" and may cite them only as examples of a kind of work.
 - Optional finer grades (`L3_FINE_GRADES`) also report partial support as a note and misaligned support as a warning. An optional uncited-claims check (`VERIFY_UNCITED_CLAIMS`) lists factual statements that cite nothing.
@@ -103,8 +103,8 @@ Verification is aimed at hallucination detection and claim checking, not at grad
 
 - Python 3.12+
 - Node.js 20+ and pnpm
-- Docker (for Postgres and Redis), or local installations of both
-- An API key for OpenAI, Zhipu, or both (see [Configuration](#configuration))
+- PostgreSQL: Docker starts one for you, or see [Running without Docker](#running-without-docker). Redis is optional.
+- An OpenAI API key, which claim checking and the review need. A Zhipu GLM key is optional (see [Configuration](#configuration)).
 
 ### 1. Clone and install
 
@@ -132,7 +132,7 @@ Copy `.env.example` to `.env` in the project root and fill it in. Never commit t
 DATABASE_URL=postgresql+asyncpg://papergen:papergen_dev@localhost:5558/papergen
 REDIS_URL=redis://:redis_dev@localhost:6400/0
 
-# Set one or both
+# OpenAI is needed for claim checking and the review; Zhipu is optional
 OPENAI_API_KEY=your_key_here
 ZHIPU_API_KEY=your_key_here
 
@@ -160,6 +160,8 @@ CONTACT_EMAIL=
 docker compose up -d postgres redis
 ```
 
+This starts PostgreSQL (port 5558) and Redis (port 6400) in containers. To run without Docker, see [Running without Docker](#running-without-docker).
+
 ### 4. Run the app
 
 **Windows (PowerShell):**
@@ -183,13 +185,34 @@ cd frontend && pnpm dev
 
 Open <http://localhost:3000>.
 
+### Running without Docker
+
+Docker only provides the two databases; the app itself always runs on your machine. PostgreSQL is required, Redis is not.
+
+**PostgreSQL** (tested with 16). Install it from [postgresql.org](https://www.postgresql.org/download/), with `brew install postgresql@16` on macOS, or with your Linux package manager. Then, as a PostgreSQL superuser (`postgres` on Windows installs, `sudo -u postgres psql` on Linux, your own user with Homebrew), create a user and a database:
+
+```bash
+psql -U postgres -c "CREATE USER papergen WITH PASSWORD 'papergen_dev';"
+psql -U postgres -c "CREATE DATABASE papergen OWNER papergen;"
+```
+
+Point `DATABASE_URL` at it. A local install listens on 5432, not 5558:
+
+```env
+DATABASE_URL=postgresql+asyncpg://papergen:papergen_dev@localhost:5432/papergen
+```
+
+The backend creates its tables on first start. A hosted PostgreSQL works the same way: use its connection string with the `postgresql+asyncpg://` scheme.
+
+**Redis** can be skipped. Leave `REDIS_URL` as it is: when Redis cannot be reached, the backend logs one warning and pushes progress from memory, which is all a single machine needs.
+
 ## Configuration
 
 Everything is set in `.env` (names are the upper-case form of the field names in `backend/core/config.py`). Defaults shown.
 
 | Setting | Default | Effect |
 |---------|---------|--------|
-| `VERIFY_CITATION_SUPPORT` | `true` | Layer 3 claim-support check, one fast-model call per cited paper |
+| `VERIFY_CITATION_SUPPORT` | `true` | Claim-support check (check 3), one fast-model call per cited paper |
 | `VERIFY_UNCITED_CLAIMS` | `false` | Uncited-claim check, one fast-model call per section |
 | `REVISE_FLAGGED_CLAIMS` | `true` | Constrained revision of flagged sentences |
 | `EXPAND_CITATION_CHAIN` | `true` | Citation-chain expansion after screening |
@@ -197,19 +220,19 @@ Everything is set in `.env` (names are the upper-case form of the field names in
 | `REVIEW_DRAFT` | `true` | Simulated review of the final draft |
 | `REVIEW_PANEL` | `true` | Three independent reviewers instead of one (about three times the cost) |
 | `CITATION_GRAPH_OUTLINE` | `false` | Review papers: outline the body around citation-graph groups of the pool |
-| `L3_FINE_GRADES` | `false` | Layer 3 also grades partial and misaligned support |
+| `L3_FINE_GRADES` | `false` | Check 3 also grades partial and misaligned support |
 | `EVIDENCE_TABLE_IN_WRITING` | `false` | Give the writer each paper's evidence-table row |
 | `PAPER_CACHE` | `true` | Reuse fetched abstracts, full text and metadata across tasks |
 | `SCREENING_THINKING` | `false` | Let the screening model reason before answering (slower) |
 | `SCREENING_CONCURRENCY` | `8` | Screening calls in flight at once |
 
-Task-level options are chosen on the new-task page: writing language, literature mix (`zh_major` about 70% Chinese, `balanced` about 50%, `en_major` about 20%), reference style, and collaboration mode (`key_gates` pauses at every major phase and is the default; `full_auto` runs end to end).
+Task-level options are chosen on the new-task page: writing language, literature mix (`zh_major` about 70% Chinese, `balanced` about 50%, `en_major` about 20%), and collaboration mode (`key_gates` pauses at every major phase and is the default; `full_auto` runs end to end). The reference style is chosen when exporting, on the task page; it defaults to GB/T 7714 for Chinese papers and APA 7 for English ones.
 
 **Models and tiers.** There are two tiers, fast and strong, set per provider with `OPENAI_MODEL_FAST/STRONG` and `ZHIPU_MODEL_FAST/STRONG`. Each step is assigned a tier with `MODEL_TIER_SCOPING`, `MODEL_TIER_SYNTHESIS`, `MODEL_TIER_OUTLINE` (all `fast` by default) and `MODEL_TIER_WRITING` (`strong`).
 
 - Fast tier: Zhipu first, falling back to the OpenAI fast model.
 - Strong tier: OpenAI first, falling back to Zhipu.
-- Layer 3, the uncited-claim check and the simulated review need an OpenAI key; the Zhipu fallback covers the other stages only. The review uses the OpenAI strong model with no fallback.
+- Claim checking, the uncited-claim check and the simulated review need an OpenAI key; the Zhipu fallback covers the other stages only. The review uses the OpenAI strong model with no fallback.
 - If a phase's model call fails, the task is marked failed with a retry button; no placeholder text reaches an approval gate.
 - `LLM_PROVIDER` (`openai` by default, or `zhipu`) only chooses which key the startup check and the health endpoint probe.
 
@@ -217,7 +240,7 @@ The model IDs above are defaults; set the `*_MODEL_*` variables to use any other
 
 ## Evaluation
 
-`evals/` replays fixed topics offline, so a change can be measured against the same literature pool before and after. Replays report the hallucinated-key rate, layer 3 verdicts by evidence type, uncited statements before and after revision, revisions applied and resolved, review comments, and LLM calls per model.
+`evals/` replays fixed topics offline, so a change can be measured against the same literature pool before and after. Replays report the hallucinated-key rate, claim-support verdicts by evidence type, uncited statements before and after revision, revisions applied and resolved, review comments, and LLM calls per model.
 
 ```bash
 python -m evals.capture                       # freeze the topics in evals/topics.json up to writing (hours; API costs)
@@ -230,12 +253,12 @@ Fixtures, results and labels embed paper text, so they are not distributed with 
 ## Limitations
 
 - Verification depends on the model consistently using the `[cite:KEY]` marker format. Prose citations such as `(Author, year)` are not verified.
-- Layer 1 title similarity is character-level, so a cross-language record (an English Crossref title against a stored Chinese one) can legitimately trigger a warning.
+- Check 2 compares titles character by character, so a cross-language record (an English Crossref title against a stored Chinese one) can legitimately trigger a warning.
 - Chinese journals rarely offer open-access PDFs or citation data, so full-text evidence and citation chaining help Chinese-language topics much less than English ones.
 - Open sources hold relatively few on-topic Chinese papers, and many lack an abstract, so Chinese citations in a draft can be sparse and repetitive.
-- Layer 3 "unsupported" verdicts are a screening aid, not a ruling: false alarms are common and results vary from run to run. Treat every warning as something to check against the source.
-- Layer 3, the uncited-claim check and the review require an OpenAI key.
-- The evidence table is extracted from abstracts and excerpts; the limitation column can hold a shortcoming of earlier work that the paper cites as motivation.
+- "Unsupported" verdicts from check 3 are a screening aid, not a ruling: false alarms are common and results vary from run to run. Treat every warning as something to check against the source.
+- Claim checking, the uncited-claim check and the review require an OpenAI key.
+- The evidence table is extracted by a model from the abstract and, with full text, the results, discussion, limitations and conclusion sections. For review papers in particular, a finding or a limitation can end up in the wrong column.
 - The review's reasoning occasionally uses its whole budget; a lower-effort retry covers this at slightly lower quality.
 - Semantic Scholar rate-limits aggressively without an API key.
 - OpenAlex requires an API key for a usable daily budget. Without `OPENALEX_API_KEY`, search, the DOI abstract lookup and the cross-source check return fewer results once the budget runs out.
@@ -246,17 +269,9 @@ Fixtures, results and labels embed paper text, so they are not distributed with 
 
 - Generated text is a **draft**. It can contain errors, unsupported claims and misread sources, even after verification. Read the cited sources and check every claim before relying on it.
 - You are responsible for the academic integrity of anything you produce with this tool: disclose AI assistance where your institution, publisher or venue requires it, and do not submit generated text as unreviewed original work.
-- This project is not affiliated with, endorsed by, or sponsored by OpenAlex, Crossref, Semantic Scholar, arXiv, OpenAI or Zhipu AI. These services are supported as integrations only. Your use of them is governed by their own terms and rate limits, and you are responsible for complying with them, including the licences of any papers you retrieve.
+- This project is not affiliated with, endorsed by, or sponsored by OpenAlex, Crossref, Semantic Scholar, arXiv, OpenAI or Zhipu AI. These services are supported as integrations only. Your use of them is governed by their own terms and rate limits, and you are responsible for complying with them, including the licenses of any papers you retrieve.
 - Do not commit API keys or `.env` files.
-
-## Contributing
-
-Pull requests are welcome. Before submitting:
-
-1. Run `pytest tests/`.
-2. Use the shared `backend.literature.bibtex` helpers (`bibtex_key`, `iter_cite_keys`); do not reintroduce a private copy of the key logic or marker regex.
-3. For behaviour changes, compare `evals.replay` results on the same fixtures before and after.
 
 ## License
 
-Released under the [GNU AGPL-3.0](./LICENSE). If you run a modified version as a network service, you must offer its source to its users. Licences of third-party dependencies are listed in the [NOTICE](./NOTICE) file.
+Released under the [GNU AGPL-3.0](./LICENSE). If you run a modified version as a network service, you must offer its source to its users. Licenses of third-party dependencies are listed in the [NOTICE](./NOTICE) file.

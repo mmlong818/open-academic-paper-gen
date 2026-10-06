@@ -23,7 +23,7 @@ English: [README.md](./README.md)
 - **证据表。** 每篇文献一行（任务、方法、数据、指标、主要发现、局限），只依据该文献自己的文本抽取，可导出 Markdown 或 CSV。
 - **创新点诊断。** 在问题、方法、数据、视角四个层面评估研究角度，列出文献池中最接近的已有工作，并给出审稿人最可能的反对意见。
 - **分节写作与 `[cite:KEY]` 标记。** 每条引用都是文献池中的一个 key，因此可以被机械地核验。
-- **三层引用核验。** key 必须可解析；DOI 与元数据必须对得上真实记录；被引论文必须支撑该论断，有全文时给出最匹配段落所在的 PDF 页码。
+- **每条引用三道检查。** key 必须可解析；DOI 与元数据必须对得上真实记录；被引论文必须支撑该论断，有全文时给出最匹配段落所在的 PDF 页码。
 - **受约束修订。** 被标记的句子在严格规则下改写，然后重新核验。
 - **模拟三审稿人审稿。** 三位侧重点不同的审稿人独立通读终稿；每条意见必须逐字引用原文。
 - **写作风格检查。** 标出机器腔表达，仅作建议，不改写正文。
@@ -34,16 +34,16 @@ English: [README.md](./README.md)
 ## 工作原理
 
 ```
-┌─────────────┐   ┌───────────┐   ┌─────────────┐   ┌─────────┐
-│  Next.js    │──▶│  FastAPI  │──▶│  LangGraph  │──▶│ Postgres│
-│  前端       │   │  + WS     │   │  流水线     │   │ + Redis │
-└─────────────┘   └───────────┘   └─────────────┘   └─────────┘
-                                         │
-                                         ▼
-                          ┌──────────────────────────────┐
-                          │ OpenAlex · CrossRef · S2 · PDF│
-                          │ OpenAI / 智谱 GLM             │
-                          └──────────────────────────────┘
+┌──────────┐   ┌──────────┐   ┌───────────┐   ┌──────────────────┐
+│ Next.js  │──▶│ FastAPI  │──▶│ LangGraph │──▶│ PostgreSQL       │
+│ frontend │   │ + WS     │   │ pipeline  │   │ Redis (optional) │
+└──────────┘   └──────────┘   └─────┬─────┘   └──────────────────┘
+                                    │
+                                    ▼
+             ┌────────────────────────────────────────────────┐
+             │ OpenAlex · Crossref · Semantic Scholar · arXiv │
+             │ OpenAI / Zhipu GLM                             │
+             └────────────────────────────────────────────────┘
 ```
 
 流水线是一个 9 阶段的 LangGraph 状态机。进度通过 WebSocket 推送到前端；Redis 可选，仅用于进度推送。
@@ -74,9 +74,9 @@ English: [README.md](./README.md)
 
 核验聚焦在**幻觉检测**与**论断核对**，而非元数据完整性打分。
 
-**标记解析。** 正文中每个 `[cite:KEY]` 必须能在文献池里找到对应论文。找不到的 key 被标为幻觉，并在输出中渲染为 `[?KEY]`，方便搜索修正。一个标记可以含多个 key（`[cite:A, cite:B]`），逐个核验。
+**检查一：标记解析。** 正文中每个 `[cite:KEY]` 必须能在文献池里找到对应论文。找不到的 key 被标为幻觉，并在输出中渲染为 `[?KEY]`，方便搜索修正。一个标记可以含多个 key（`[cite:A, cite:B]`），逐个核验。
 
-**第一层：存在性与元数据。** 有 DOI 的论文对照 Crossref 核验。
+**检查二：存在性与元数据**（结果中记为 `layer1`）。有 DOI 的论文对照 Crossref 核验。
 
 - 返回 404 时再到 doi.org 查询（覆盖 DataCite 注册的 arXiv 等 DOI）；doi.org 也不认识该 DOI 才判定移除。
 - 标题不匹配为警告。标题匹配后，还要核对是否描述同一篇论文：是否有共同作者、第一作者、年份（在线优先出版允许差 1 年）、起始页。DOI 格式不对、年份在未来、记录带撤稿或撤回声明，同样为警告。
@@ -84,11 +84,11 @@ English: [README.md](./README.md)
 - 网络错误与无 DOI 默认通过：无法验证不等于无效。
 - 同一篇论文用两个 key 引用，或预印本与其正式发表版本同时被引，在第二个 key 或预印本一侧警告。
 
-**第三层：论断支撑。** 对每篇被引论文，由快模型判断原文是否支撑句子归给它的内容。
+**检查三：论断支撑**（结果中记为 `layer3`）。对每篇被引论文，由快模型判断原文是否支撑句子归给它的内容。
 
 - 有全文时，证据是论文开头加上与论断最相关的段落；否则用正文节选或摘要。
 - 只核对该标记所附着的内容。作者自己的评价、局限性分析和对比不算被引文献的主张。表格按行、按单元格核对，并剔除作者评述列。
-- 原文中找不到的细节判为"无法判断"，不判"不支撑"。不支撑会产生一条附原句的警告；这一层从不删除引用。
+- 原文中找不到的细节判为"无法判断"，不判"不支撑"。不支撑会产生一条附原句的警告；这一检查从不删除引用。
 - 有页码数据时，警告会注明与论断最匹配的段落所在的 PDF 页，如 `(PDF p. 7)`。页码是 PDF 物理页，不是印刷页码。
 - 摘要与全文都太短、无法核对的被引论文，标为 `unverified`，不计入通过；核验面板单独计数。写作时这类文献标为「仅标题」，只能作为某类研究的例子引用。
 - 可选的细分档（`L3_FINE_GRADES`）把部分支撑作为备注、方向相反作为警告。可选的该引未引检查（`VERIFY_UNCITED_CLAIMS`）列出没有引用的事实性陈述。
@@ -103,8 +103,8 @@ English: [README.md](./README.md)
 
 - Python 3.12+
 - Node.js 20+ 与 pnpm
-- Docker（用于 Postgres 和 Redis），或本地安装这两者
-- OpenAI、智谱或两者之一的 API key（见[配置](#配置)）
+- PostgreSQL：可用 Docker 一键启动，也可以本地安装，见[不用 Docker 运行](#不用-docker-运行)。Redis 可选。
+- OpenAI API key，论断核验与审稿需要它。智谱 GLM key 可选（见[配置](#配置)）。
 
 ### 1. 克隆和安装
 
@@ -132,7 +132,7 @@ cd ..
 DATABASE_URL=postgresql+asyncpg://papergen:papergen_dev@localhost:5558/papergen
 REDIS_URL=redis://:redis_dev@localhost:6400/0
 
-# 至少配置其中一个
+# 论断核验与审稿需要 OpenAI；智谱可选
 OPENAI_API_KEY=your_key_here
 ZHIPU_API_KEY=your_key_here
 
@@ -160,6 +160,8 @@ CONTACT_EMAIL=
 docker compose up -d postgres redis
 ```
 
+这会在容器中启动 PostgreSQL（端口 5558）和 Redis（端口 6400）。不想用 Docker，见[不用 Docker 运行](#不用-docker-运行)。
+
 ### 4. 启动应用
 
 **Windows（PowerShell）：**
@@ -183,33 +185,54 @@ cd frontend && pnpm dev
 
 打开 <http://localhost:3000>。
 
+### 不用 Docker 运行
+
+Docker 只负责提供两个数据库，应用本身始终在你的机器上运行。PostgreSQL 必需，Redis 可选。
+
+**PostgreSQL**（已在 16 版上测试）。从 [postgresql.org](https://www.postgresql.org/download/) 下载安装，macOS 可用 `brew install postgresql@16`，Linux 用系统包管理器。然后以 PostgreSQL 超级用户身份（Windows 安装版为 `postgres`，Linux 用 `sudo -u postgres psql`，Homebrew 为你自己的用户）创建用户和数据库：
+
+```bash
+psql -U postgres -c "CREATE USER papergen WITH PASSWORD 'papergen_dev';"
+psql -U postgres -c "CREATE DATABASE papergen OWNER papergen;"
+```
+
+把 `DATABASE_URL` 指向它。本地安装默认监听 5432，而不是 5558：
+
+```env
+DATABASE_URL=postgresql+asyncpg://papergen:papergen_dev@localhost:5432/papergen
+```
+
+后端首次启动时会自动建表。云端托管的 PostgreSQL 同理：把它的连接串改成 `postgresql+asyncpg://` 开头即可。
+
+**Redis** 可以不装。`REDIS_URL` 保持原样：连不上 Redis 时，后端会记一条警告，改用内存推送进度，单机使用完全够用。
+
 ## 配置
 
-所有设置都在 `.env` 中（名称是 `backend/core/config.py` 字段名的大写形式）。括号内为默认值。
+所有设置都在 `.env` 中（名称是 `backend/core/config.py` 字段名的大写形式），表中为默认值。
 
 | 设置 | 默认 | 作用 |
 |------|------|------|
-| `VERIFY_CITATION_SUPPORT` | `true` | 第三层论断支撑检查，每篇被引论文一次快模型调用 |
+| `VERIFY_CITATION_SUPPORT` | `true` | 论断支撑检查（检查三），每篇被引论文一次快模型调用 |
 | `VERIFY_UNCITED_CLAIMS` | `false` | 该引未引检查，每节一次快模型调用 |
 | `REVISE_FLAGGED_CLAIMS` | `true` | 受约束修订被标记的句子 |
 | `EXPAND_CITATION_CHAIN` | `true` | 筛选后沿引用链扩展 |
 | `RERANK_SECTION_PAPERS` | `true` | 快模型为每节挑选参考文献 |
 | `REVIEW_DRAFT` | `true` | 对终稿做模拟审稿 |
-| `REVIEW_PANEL` | `true` | 三位独立审稿人，关闭则为单审稿人（成本约为三倍） |
+| `REVIEW_PANEL` | `true` | 三位独立审稿人（成本约为单审稿人的三倍）；关闭则为单审稿人 |
 | `CITATION_GRAPH_OUTLINE` | `false` | 综述类论文：按文献池的引用图主题群组织主体章节 |
-| `L3_FINE_GRADES` | `false` | 第三层增加部分支撑与方向相反两档 |
+| `L3_FINE_GRADES` | `false` | 检查三增加部分支撑与方向相反两档 |
 | `EVIDENCE_TABLE_IN_WRITING` | `false` | 把每篇文献的证据表行交给写作模型 |
 | `PAPER_CACHE` | `true` | 跨任务复用已抓取的摘要、全文与元数据 |
 | `SCREENING_THINKING` | `false` | 让筛选模型先推理再回答（更慢） |
 | `SCREENING_CONCURRENCY` | `8` | 筛选时同时进行的调用数 |
 
-任务级选项在新建任务页选择：写作语言、文献比例（`zh_major` 中文约 70%、`balanced` 约 50%、`en_major` 约 20%）、参考文献格式，以及协作模式（`key_gates` 在每个主要阶段暂停，为默认；`full_auto` 全程运行）。
+任务级选项在新建任务页选择：写作语言、文献比例（`zh_major` 中文约 70%、`balanced` 约 50%、`en_major` 约 20%）以及协作模式（`key_gates` 在每个主要阶段暂停，为默认；`full_auto` 全程运行）。参考文献格式在任务页导出时选择，默认中文论文用 GB/T 7714、英文论文用 APA 7。
 
 **模型与分档。** 分为 fast 与 strong 两档，每个提供方分别用 `OPENAI_MODEL_FAST/STRONG` 与 `ZHIPU_MODEL_FAST/STRONG` 设置。各步骤使用的档位由 `MODEL_TIER_SCOPING`、`MODEL_TIER_SYNTHESIS`、`MODEL_TIER_OUTLINE`（默认均为 `fast`）与 `MODEL_TIER_WRITING`（`strong`）决定。
 
 - fast 档：先用智谱，失败时降级到 OpenAI fast 模型。
 - strong 档：先用 OpenAI，失败时降级到智谱。
-- 第三层、该引未引检查与模拟审稿需要 OpenAI key；智谱备用只覆盖其余阶段。审稿使用 OpenAI strong 模型，没有备用模型。
+- 论断支撑检查、该引未引检查与模拟审稿需要 OpenAI key；智谱备用只覆盖其余阶段。审稿使用 OpenAI strong 模型，没有备用模型。
 - 某阶段模型调用失败时，任务标为失败并提供重试按钮；不会有占位文本进入审批闸门。
 - `LLM_PROVIDER`（默认 `openai`，也可设为 `zhipu`）只决定启动检查与健康检查接口探测哪个 key。
 
@@ -217,7 +240,7 @@ cd frontend && pnpm dev
 
 ## 评测
 
-`evals/` 在固定题目上离线回放，使改动前后可以在同一文献池上对比。回放报告幻觉 key 率、按证据类型拆分的第三层判定、修订前后的该引未引数、修订的应用与解决数、审稿意见数，以及各模型的 LLM 调用数。
+`evals/` 在固定题目上离线回放，使改动前后可以在同一文献池上对比。回放报告幻觉 key 率、按证据类型拆分的论断支撑判定、修订前后的该引未引数、修订的应用与解决数、审稿意见数，以及各模型的 LLM 调用数。
 
 ```bash
 python -m evals.capture                       # 把 evals/topics.json 中的题目冻结到写作之前（耗时数小时，产生 API 费用）
@@ -230,12 +253,12 @@ fixture、结果与标注文件含论文原文，因此不随仓库分发（已�
 ## 局限性
 
 - 核验依赖模型一致使用 `[cite:KEY]` 标记格式。`(作者, 年份)` 这类行文式引用不会被核验。
-- 第一层的标题相似度是字符级匹配，跨语言记录（Crossref 的英文标题对本地存的中文标题）可能合理地触发警告。
+- 检查二按字符比较标题相似度，跨语言记录（Crossref 的英文标题对本地存的中文标题）可能合理地触发警告。
 - 中文期刊很少提供开放获取 PDF 或引用数据，全文证据与引用链扩展对中文题目的帮助远小于英文题目。
 - 开放数据源中切题的中文文献相对较少，且很多没有摘要，所以草稿中的中文引用可能偏少且重复。
-- 第三层"不支撑"判定只是筛查辅助，不是裁决：误报并不罕见，不同运行之间结果也会波动。请把每条警告当作需要对照原文核实的线索。
-- 第三层、该引未引检查与审稿需要 OpenAI key。
-- 证据表依据摘要和正文节选抽取；「局限」一栏可能填入论文在引言里批评的前人方法缺陷。
+- 检查三的"不支撑"判定只是筛查辅助，不是裁决：误报并不罕见，不同运行之间结果也会波动。请把每条警告当作需要对照原文核实的线索。
+- 论断支撑检查、该引未引检查与审稿需要 OpenAI key。
+- 证据表由模型从摘要抽取，有全文时还读取结果、讨论、局限与结论各节；综述类论文的「发现」「局限」有时会填错栏。
 - 审稿的推理偶尔会耗尽整个预算；降低推理强度的重试可以兜底，但质量略低。
 - Semantic Scholar 在无 API key 时限速激进。
 - OpenAlex 需要 API key 才有可用的每日预算。未配置 `OPENALEX_API_KEY` 时，预算用尽后，检索、按 DOI 补摘要与跨库确认都会返回更少的结果。
@@ -248,14 +271,6 @@ fixture、结果与标注文件含论文原文，因此不随仓库分发（已�
 - 你对用本工具产出的任何内容的学术诚信负责：在所在机构、出版方或会议要求时披露 AI 辅助，不要把未经审阅的生成文本作为原创成果提交。
 - 本项目与 OpenAlex、Crossref、Semantic Scholar、arXiv、OpenAI、智谱 AI 无任何隶属、认可或赞助关系，仅作为集成的服务被支持。你对这些服务的使用受其各自条款与速率限制约束，你有责任遵守，包括所检索论文自身的许可。
 - 切勿提交 API key 或 `.env` 文件。
-
-## 贡献指南
-
-欢迎提交 PR。提交前请：
-
-1. 运行 `pytest tests/`。
-2. 使用共享的 `backend.literature.bibtex` 工具（`bibtex_key`、`iter_cite_keys`），不要再引入私有的 key 逻辑或标记正则拷贝。
-3. 行为改动请用 `evals.replay` 在同一批 fixture 上对比前后结果。
 
 ## 许可
 
