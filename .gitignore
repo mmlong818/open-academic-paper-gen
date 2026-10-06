@@ -1,0 +1,38 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.env
+.env.local
+.venv/
+venv/
+dist/
+build/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Logs
+*.log
+uvicorn*.log
+frontend/nextjs.log
+
+# Node
+node_modules/
+.next/
+.turbo/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local-only / generated docs
+docs/superpowers/
+memory/
+
+# Eval artefacts: fixtures and results embed paper text excerpts
+evals/fixtures/
+evals/results/
+evals/labels/

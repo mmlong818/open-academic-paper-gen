@@ -1,0 +1,7 @@
+[
+  {"slug": "rag-hallucination", "topic": "Retrieval-augmented generation for reducing hallucination in large language models", "language": "en", "paper_type": "review"},
+  {"slug": "gnn-molecules", "topic": "Graph neural networks for molecular property prediction", "language": "en", "paper_type": "computational"},
+  {"slug": "remote-work", "topic": "Effects of remote work on employee productivity", "language": "en", "paper_type": "empirical"},
+  {"slug": "med-imaging-zh", "topic": "深度学习在医学影像诊断中的应用", "language": "zh", "paper_type": "general"},
+  {"slug": "mindfulness-zh", "topic": "正念干预对大学生焦虑的影响", "language": "zh", "paper_type": "systematic"}
+]

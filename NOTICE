@@ -1,0 +1,32 @@
+open-academic-paper-gen
+Licensed under the GNU Affero General Public License v3.0 (see LICENSE).
+
+This project does not include third-party source code. It depends on the
+following open-source packages, which are installed separately and remain
+under their own licenses:
+
+Backend (Python)
+  fastapi            MIT
+  uvicorn            BSD-3-Clause
+  langgraph          MIT
+  langchain-openai   MIT
+  sqlalchemy         MIT
+  asyncpg            Apache-2.0
+  redis              MIT
+  pydantic           MIT
+  pydantic-settings  MIT
+  python-dotenv      BSD-3-Clause
+  httpx              BSD-3-Clause
+  pypdf              BSD-3-Clause
+
+Frontend (JavaScript)
+  next               MIT
+  react, react-dom   MIT
+  tailwindcss        MIT
+  typescript         Apache-2.0
+
+External services
+  The software can query OpenAlex, Crossref, Semantic Scholar and arXiv for
+  bibliographic data, and OpenAI or Zhipu GLM for language models. It is not
+  affiliated with or endorsed by any of them. Use of each service is subject
+  to that service's own terms, and API keys are supplied by the user.
