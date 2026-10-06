@@ -8,6 +8,11 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
+from backend.core.log_redaction import RedactSecrets
+
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(RedactSecrets())
+
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

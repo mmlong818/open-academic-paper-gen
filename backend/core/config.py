@@ -1,25 +1,27 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # Secrets carry repr=False: a printed Settings (an error message, a debug line) must not show them.
 
-    database_url: str = "postgresql+asyncpg://papergen:papergen_dev@localhost:5432/papergen"
-    redis_url: str = "redis://:redis_dev@localhost:6379/0"
-    secret_key: str = "dev_secret"
+    database_url: str = Field("postgresql+asyncpg://papergen:papergen_dev@localhost:5432/papergen", repr=False)
+    redis_url: str = Field("redis://:redis_dev@localhost:6379/0", repr=False)
+    secret_key: str = Field("dev_secret", repr=False)
 
     # LLM provider: "openai" | "zhipu" | "auto"
     llm_provider: str = "openai"
 
     # OpenAI
-    openai_api_key: str = ""
+    openai_api_key: str = Field("", repr=False)
     # 2026-10-02 against the 5.6 models on the labelled sets: gpt-6-luna judged layer 3 right 85.0 of 99
     # (80.3) and misplaced 3 evidence cells (8); gpt-6.1-sol is the 6.x strong model, half the price.
     openai_model_fast: str = "gpt-6-luna"
     openai_model_strong: str = "gpt-6.1-sol"
 
     # 智谱 AI（OpenAI 兼容接口）
-    zhipu_api_key: str = ""
+    zhipu_api_key: str = Field("", repr=False)
     # glm-5.3-flash 筛选与 glm-5.1（关闭思考）持平：两者分歧的 37 篇判对 18 对 19，480 篇 106 秒对 301 秒。
     # strong 只在 OpenAI 写作失败时兜底，未评测，保持 glm-5.1。
     zhipu_model_fast: str = "glm-5.3-flash"
@@ -27,8 +29,8 @@ class Settings(BaseSettings):
     zhipu_base_url: str = "https://open.bigmodel.cn/api/paas/v4/"
 
     # Literature API keys. Read here, not with os.getenv: .env reaches Settings only.
-    openalex_api_key: str = ""
-    semantic_scholar_api_key: str = ""
+    openalex_api_key: str = Field("", repr=False)
+    semantic_scholar_api_key: str = Field("", repr=False)
     # Crossref / OpenAlex polite pool; nothing is sent when empty
     contact_email: str = ""
 
