@@ -1,10 +1,21 @@
+<div align="center">
+
 # Open Academic Paper Gen
 
-[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](./LICENSE)
+**From a research topic to a draft paper whose every citation is checked against the real source**
+
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.141+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![LangGraph](https://img.shields.io/badge/LangGraph-pipeline-1C3C3C?style=flat-square)](https://github.com/langchain-ai/langgraph)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](./LICENSE)
+
+English · [中文](./README.zh-CN.md)
+
+</div>
 
 > A multi-agent pipeline that turns a research topic into a draft academic paper grounded in real literature, with built-in citation hallucination detection and claim-support checking.
-
-中文版：[README.zh-CN.md](./README.zh-CN.md)
 
 ---
 

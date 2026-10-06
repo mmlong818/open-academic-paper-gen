@@ -1,10 +1,21 @@
+<div align="center">
+
 # Open Academic Paper Gen
 
-[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](./LICENSE)
+**从一个研究主题，到每条引用都对照原文核验过的论文初稿**
+
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.141+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![LangGraph](https://img.shields.io/badge/LangGraph-pipeline-1C3C3C?style=flat-square)](https://github.com/langchain-ai/langgraph)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](./LICENSE)
+
+[English](./README.md) · 中文
+
+</div>
 
 > 多 Agent 流水线，将一个研究主题转化为基于真实文献的论文初稿，内置引用幻觉检测与论断支撑核验。
-
-English: [README.md](./README.md)
 
 ---
 
