@@ -38,8 +38,9 @@ WARNS = (UNSUPPORTED, MISALIGNED)
 # Below this much source text there is nothing worth judging against.
 MIN_EVIDENCE_CHARS = 200
 _MAX_EVIDENCE_CHARS = 4000
-# One paper is usually cited for the same point repeatedly; the first few claims are enough.
-_MAX_CLAIMS_PER_KEY = 6
+# Claims judged per call. A paper cited more often is judged in several calls, each with its own
+# evidence: capped at six, 10 of 92 citations of a real review went unjudged.
+_CLAIMS_PER_CALL = 6
 # Reasoning models spend output tokens thinking first: at 1024 a six-claim batch came
 # back empty (finish_reason=length, all 1024 tokens spent on reasoning).
 SUPPORT_MAX_TOKENS = 4096
@@ -147,11 +148,22 @@ class SupportChecker:
         item: LiteratureItem,
         language: str,
     ) -> tuple[str, list[SupportVerdict]]:
-        selected = claims[:_MAX_CLAIMS_PER_KEY]
+        batches = [claims[i:i + _CLAIMS_PER_CALL] for i in range(0, len(claims), _CLAIMS_PER_CALL)]
+        results = await asyncio.gather(*[self._check_batch(llm, key, batch, item, language) for batch in batches])
+        return key, [verdict for verdicts in results for verdict in verdicts]
+
+    async def _check_batch(
+        self,
+        llm: "ChatOpenAI",
+        key: str,
+        claims: list[Claim],
+        item: LiteratureItem,
+        language: str,
+    ) -> list[SupportVerdict]:
         # full text when there is one: its opening plus the passages matching these claims
-        evidence = select_evidence(item, selected, budget=_MAX_EVIDENCE_CHARS)
+        evidence = select_evidence(item, claims, budget=_MAX_EVIDENCE_CHARS)
         if weighted_length(evidence) < MIN_EVIDENCE_CHARS:
-            return key, []
+            return []
 
         # Prompt building, the call and parsing all sit inside one guard: this layer must
         # never be the reason verification dies, and gather() would propagate anything raised.
@@ -159,7 +171,7 @@ class SupportChecker:
             prompt = build_support_prompt(
                 title=item.title or "",
                 evidence=evidence,
-                claims=[{"sentence": c.sentence, "context": c.context} for c in selected],
+                claims=[{"sentence": c.sentence, "context": c.context} for c in claims],
                 language=language,
                 key=key,
                 passages=bool(item.full_text),
@@ -167,12 +179,12 @@ class SupportChecker:
             )
             async with self._semaphore:
                 response = await llm.ainvoke(prompt)
-            verdicts = _parse_verdicts(response.content, len(selected))
+            verdicts = _parse_verdicts(response.content, len(claims))
         except Exception as exc:
             logger.warning("[layer3] support check failed for %s: %s", key, exc)
-            return key, []
+            return []
 
-        return key, [
+        return [
             SupportVerdict(claim=claim, verdict=verdict, reason=reason, pages=tuple(claim_pages(item, claim)))
-            for claim, (verdict, reason) in zip(selected, verdicts)
+            for claim, (verdict, reason) in zip(claims, verdicts)
         ]

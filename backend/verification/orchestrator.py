@@ -21,6 +21,7 @@ from backend.verification.layer3_support import (
 )
 from backend.verification.schemas import (
     CitationIssue,
+    ClaimCoverage,
     CitationStatus,
     VerificationResult,
     VerificationSummary,
@@ -176,9 +177,8 @@ class VerificationOrchestrator:
             sorted(cited_keys)[:10], sorted(key_to_item.keys())[:10],
         )
 
-        support = await self.support_checker.check(
-            extract_claims(context), key_to_item, language
-        )
+        claims_by_key = extract_claims(context)
+        support = await self.support_checker.check(claims_by_key, key_to_item, language)
 
         issues: list[CitationIssue] = []
         invalid_titles: set[str] = set()
@@ -202,6 +202,9 @@ class VerificationOrchestrator:
 
             row_of[key] = len(issues)
             status, issue = await self._classify(item, support.get(key, []))
+            if settings.verify_citation_support:
+                issue.evidence = "none" if _no_text_to_check(item) else evidence_kind(item)
+                issue.claims = _coverage(claims_by_key.get(key, []), support.get(key, []))
             if status == CitationStatus.REMOVED:
                 removed += 1
                 invalid_titles.add(item.title)
@@ -364,6 +367,12 @@ def _support_notes(item: LiteratureItem, verdicts: list[SupportVerdict]) -> list
     if unclear and evidence_kind(item) == "abstract":
         notes.append(f"{unclear} claim(s) cannot be settled on the abstract alone (需全文)")
     return notes
+
+
+def _coverage(claims: list, verdicts: list[SupportVerdict]) -> ClaimCoverage:
+    unclear = sum(1 for v in verdicts if v.verdict == UNCLEAR)
+    return ClaimCoverage(total=len(claims), judged=len(verdicts) - unclear, unclear=unclear,
+                         unjudged=len(claims) - len(verdicts))
 
 
 def _page_note(verdict: SupportVerdict) -> str:

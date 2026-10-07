@@ -7,6 +7,7 @@ import AngleApprovalPanel from "./AngleApprovalPanel";
 import LiteratureMix from "./LiteratureMix";
 import EvidenceTable from "./EvidenceTable";
 import NoveltyPanel from "./NoveltyPanel";
+import { ClaimCoverageBadge, ClaimCoverageSummary } from "./ClaimCoverage";
 import type { SourceMix } from "@/lib/language";
 
 function downloadFile(content: string, filename: string, mime: string) {
@@ -963,6 +964,7 @@ export default function TaskDetailPage() {
                 <span className="text-red-500 font-medium">✗ 移除 {task.citation_issues.filter(i => i.action === "removed").length}</span>
                 <span className="text-gray-500 font-medium">? 未核验 {task.citation_issues.filter(i => i.action === "unverified").length}</span>
               </div>
+              <ClaimCoverageSummary issues={task.citation_issues} />
               <ul className="space-y-1.5">
                 {task.citation_issues.map((issue, i) => (
                   <li key={i} className="text-sm text-yellow-700 flex gap-2">
@@ -972,6 +974,7 @@ export default function TaskDetailPage() {
                         来源：{issue.stage.split("+").map(s => STAGE_LABELS[s] ?? s).join(" + ")}
                       </span>
                     )}
+                    <ClaimCoverageBadge issue={issue} />
                     <span>{issue.title} — {issue.reason}</span>
                   </li>
                 ))}

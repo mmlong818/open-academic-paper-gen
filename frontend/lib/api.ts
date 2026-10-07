@@ -10,6 +10,9 @@ export interface CitationIssue {
   action: string;
   /** Pipeline stage the problem most likely came from: "writing", "retrieval", or both joined by "+". */
   stage?: string;
+  /** What layer 3 judged the claims on: "full_text", "body", "abstract" or "none"; absent on older tasks. */
+  evidence?: string;
+  claims?: { total: number; judged: number; unclear: number; unjudged: number } | null;
 }
 
 export interface UncitedClaim {

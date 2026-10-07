@@ -15,6 +15,15 @@ class VerificationResult(BaseModel):
     issues: list[str] = Field(default_factory=list)
 
 
+class ClaimCoverage(BaseModel):
+    """How the claims citing one paper were judged by layer 3."""
+
+    total: int = 0
+    judged: int = 0      # supported, unsupported, partial or misaligned
+    unclear: int = 0     # the evidence shown could not settle it
+    unjudged: int = 0    # no verdict: no text to judge against, or the call failed
+
+
 class CitationIssue(BaseModel):
     title: str
     doi: str | None = None
@@ -24,6 +33,10 @@ class CitationIssue(BaseModel):
     # Pipeline stage the problem most likely came from: "writing" (fabricated key or
     # misdescribed source), "retrieval" (bad bibliographic record), joined with "+".
     stage: str = ""
+    # What layer 3 judged this paper's claims on ("full_text", "body", "abstract", "none"),
+    # and how many of them it settled; empty for keys that are not in the pool.
+    evidence: str = ""
+    claims: ClaimCoverage | None = None
 
 
 class VerificationSummary(BaseModel):
